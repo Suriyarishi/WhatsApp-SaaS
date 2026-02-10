@@ -14,6 +14,17 @@ import { AdminUsersPage } from './pages/AdminUsers.js'
 
 const app = document.querySelector('#app')
 
+const ICONS = {
+  home: `<svg viewBox="0 0 24 24"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V9.5z"/></svg>`,
+  bookings: `<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
+  automations: `<svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>`,
+  analytics: `<svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+  profile: `<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+  upgrade: `<svg viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.71-2.13 0-2.97a2.1 2.1 0 0 0-3 0z"/><path d="M20 4s-4.5 0-9 4.5c-1.5 1.5-2 3.5-2 5s.5 3 2 4.5c1.5 1.5 3 2 4.5 2s3.5-.5 5-2C24 8.5 24 4 24 4z"/></svg>`,
+  logout: `<svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`,
+  add: `<svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`
+};
+
 const routes = {
   '/': () => LandingPage(),
   '/signup': () => SignupPage(),
@@ -103,31 +114,51 @@ async function render(path, user = null, role = null, plan = 'free') {
   const viewFunc = routes[path] || (() => LandingPage());
   const { data: { session } } = await supabase.auth.getSession();
 
-  const nav = `
-    <nav>
-      <a href="/" data-link>Landing</a>
-      ${!session ? `
-        <a href="/login" data-link>Login</a>
-        <a href="/signup" data-link>Signup</a>
-      ` : role === 'admin' ? `
-        <a href="/admin" data-link>Admin Dash</a>
-        <a href="/admin/users" data-link>Users</a>
-        <a href="#" id="logout-link">Logout</a>
-      ` : `
-        <a href="/dashboard" data-link>Dashboard</a>
-        <a href="/bookings" data-link>Bookings</a>
-        <a href="/automations" data-link class="${plan === 'free' ? 'locked' : ''}">Automations ${plan === 'free' ? '🔒' : ''}</a>
-        <a href="/analytics" data-link class="${plan === 'free' ? 'locked' : ''}">Analytics ${plan === 'free' ? '🔒' : ''}</a>
-        <a href="/profile" data-link>Profile</a>
-        <a href="/pricing" data-link class="${plan === 'pro' ? 'pro-link' : ''}">
-          ${plan === 'pro' ? 'Pro Plan' : 'Upgrade 🚀'}
-        </a>
-        <a href="#" id="logout-link">Logout</a>
-      `}
-    </nav>
-  `;
+  // 1. Determine Business Profile State
+  let hasProfile = false;
+  if (session && role === 'business') {
+    const { data } = await supabase.from('business_profiles').select('id').eq('user_id', session.user.id).single();
+    hasProfile = !!data;
+  }
 
-  app.innerHTML = nav + viewFunc(user, role, plan);
+  // 2. Generate Nav HTML
+  let nav = '';
+  if (session) {
+    if (role === 'admin') {
+      nav = `
+        <nav>
+          <a href="/admin" data-link class="${path === '/admin' ? 'active' : ''}">${ICONS.home} Admin</a>
+          <a href="/admin/users" data-link class="${path === '/admin/users' ? 'active' : ''}">${ICONS.profile} Users</a>
+          <a href="#" id="logout-link">${ICONS.logout} Logout</a>
+        </nav>
+      `;
+    } else if (hasProfile) {
+      // Business User with Profile
+      const centerCTA = plan === 'pro'
+        ? `<a href="/automations" data-link class="nav-cta ${path === '/automations' ? 'active' : ''}">${ICONS.automations}</a>`
+        : `<a href="/pricing" data-link class="nav-cta ${path === '/pricing' ? 'active' : ''}">${ICONS.upgrade}</a>`;
+
+      nav = `
+        <nav>
+          <a href="/dashboard" data-link class="${path === '/dashboard' ? 'active' : ''}">${ICONS.home} Home</a>
+          <a href="/bookings" data-link class="${path === '/bookings' ? 'active' : ''}">${ICONS.bookings} Book</a>
+          ${centerCTA}
+          <a href="/analytics" data-link class="${path === '/analytics' ? 'active' : ''} ${plan === 'free' ? 'locked' : ''}">${ICONS.analytics} Stats</a>
+          <a href="/profile" data-link class="${path === '/profile' ? 'active' : ''}">${ICONS.profile} Profile</a>
+        </nav>
+      `;
+    } else {
+      // Logged in but no profile (Setup State)
+      nav = `
+        <nav>
+          <a href="/profile" data-link class="active">${ICONS.profile} Setup</a>
+          <a href="#" id="logout-link">${ICONS.logout} Logout</a>
+        </nav>
+      `;
+    }
+  }
+
+  app.innerHTML = (nav || '') + viewFunc(user, role, plan);
 
   // Attach dynamic event listeners
   document.querySelector('#logout-link')?.addEventListener('click', handleLogout);
@@ -146,8 +177,6 @@ async function render(path, user = null, role = null, plan = 'free') {
     }
     if (path === '/bookings') loadBookings(user);
     if (path === '/pricing') {
-      const view = PricingPage(plan);
-      app.innerHTML = nav + view;
       document.querySelector('#upgrade-btn')?.addEventListener('click', () => handleUpgrade(user, 'pro'));
       document.querySelector('#upgrade-btn-final')?.addEventListener('click', () => handleUpgrade(user, 'pro'));
     }
