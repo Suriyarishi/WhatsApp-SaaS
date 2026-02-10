@@ -1,7 +1,9 @@
 import { supabase } from '../supabase.js'
 
 export const LoginPage = async () => {
-  // 🔐 If already logged in → go to profile
+  const app = document.querySelector('#app')
+
+  // ✅ If already logged in → redirect
   const { data: { session } } = await supabase.auth.getSession()
   if (session) {
     history.pushState({}, '', '/profile')
@@ -9,7 +11,8 @@ export const LoginPage = async () => {
     return
   }
 
-  document.querySelector('#app').innerHTML = `
+  // ✅ Render UI
+  app.innerHTML = `
     <section class="auth">
       <h2>Login</h2>
 
@@ -19,30 +22,32 @@ export const LoginPage = async () => {
         <button type="submit">Login</button>
       </form>
 
-      <p>Need an account? <a href="/signup" data-link>Sign up</a></p>
+      <p>
+        Need an account?
+        <a href="/signup" data-link>Sign up</a>
+      </p>
     </section>
   `
 
-  document
-    .getElementById('login-form')
-    .addEventListener('submit', async (e) => {
-      e.preventDefault()
+  // ✅ Handle submit
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault()
 
-      const email = document.getElementById('login-email').value
-      const password = document.getElementById('login-password').value
+    const email = document.getElementById('login-email').value
+    const password = document.getElementById('login-password').value
 
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      })
-
-      if (error) {
-        alert(error.message)
-        return
-      }
-
-      // ✅ LOGIN SUCCESS → REDIRECT
-      history.pushState({}, '', '/profile')
-      window.dispatchEvent(new Event('popstate'))
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password
     })
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    // ✅ LOGIN SUCCESS → REDIRECT
+    history.pushState({}, '', '/profile')
+    window.dispatchEvent(new Event('popstate'))
+  })
 }
