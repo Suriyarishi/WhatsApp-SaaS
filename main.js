@@ -41,6 +41,38 @@ document.body.addEventListener('click', (e) => {
   history.pushState({}, '', link.href)
   router()
 })
+async function authGuard(path) {
+  const { data: { session } } = await supabase.auth.getSession()
+
+  // Not logged in
+  if (!session && path !== '/login' && path !== '/signup') {
+    return '/login'
+  }
+  async function navigate(path) {
+    const safePath = await authGuard(path)
+    window.history.pushState({}, '', safePath)
+    renderRoute(safePath)
+  }
+
+  // Logged in → check business profile
+  if (session) {
+    const { data: profile } = await supabase
+      .from('business_profiles')
+      .select('id')
+      .eq('user_id', session.user.id)
+      .single()
+
+    if (!profile && path !== '/setup') {
+      return '/setup'
+    }
+
+    if (profile && (path === '/login' || path === '/signup' || path === '/setup')) {
+      return '/dashboard'
+    }
+  }
+
+  return path
+}
 
 // --- AUTH LOGIC ---
 async function handleSignup(e) {
