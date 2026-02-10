@@ -1,36 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = 'https://cigluwcdnipklfbqfmuk.supabase.co'
-const supabaseKey = 'sb_publishable_RKbXb5zh7HsqSftreZZJlA_5Ffu6WJ6'
+// Read from Vite / Vercel environment variables
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseKey = import.meta.env.VITE_SUPABASE_KEY
 
-// Guard against placeholder values to prevent white-screen crashes
-const isConfigured =
-    supabaseUrl.startsWith('https://') &&
-    supabaseKey.startsWith('sb_')
+// Hard fail if env vars are missing (better than silent bugs)
+if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Supabase environment variables are missing')
+}
 
-// A "Safe" mock that prevents crashes but returns empty results
-const mockSupabase = {
-    auth: {
-        getSession: async () => ({ data: { session: null }, error: null }),
-        getUser: async () => ({ data: { user: null }, error: null }),
-        signUp: async () => ({ data: {}, error: { message: "Supabase not configured" } }),
-        signInWithPassword: async () => ({ data: {}, error: { message: "Supabase not configured" } }),
-        signOut: async () => ({ error: null }),
-        updateUser: async () => ({ error: { message: "Supabase not configured" } })
-    },
-    from: () => ({
-        select: () => ({
-            eq: () => ({
-                single: async () => ({ data: null, error: null }),
-                eq: () => ({ count: 0, error: null }),
-                order: () => ({ limit: () => ({ data: [], error: null }), data: [], error: null })
-            }),
-            order: () => ({ data: [], error: null })
-        }),
-        upsert: async () => ({ error: { message: "Supabase not configured" } })
-    })
-};
-
-export const supabase = isConfigured
-    ? createClient(supabaseUrl, supabaseKey)
-    : mockSupabase;
+// Create real Supabase client
+export const supabase = createClient(supabaseUrl, supabaseKey)
