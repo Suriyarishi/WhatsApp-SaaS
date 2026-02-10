@@ -1,25 +1,46 @@
 import { supabase } from './supabase.js'
+
 import { LandingPage } from './pages/Landing.js'
 import { SignupPage } from './pages/Signup.js'
 import { LoginPage } from './pages/Login.js'
 import { DashboardHome } from './pages/Dashboard.js'
-import { ProfilePage } from './pages/Profile.js'
+import { BusinessProfilePage } from './pages/BusinessProfile.js'
 import { SetupPage } from './pages/Setup.js'
 import { BookingsPage } from './pages/Bookings.js'
 import { SettingsPage } from './pages/Settings.js'
 
-const app = document.querySelector('#app');
+const app = document.querySelector('#app')
 
 const routes = {
   '/': LandingPage,
   '/signup': SignupPage,
   '/login': LoginPage,
   '/dashboard': DashboardHome,
-  '/profile': ProfilePage,
+  '/profile': BusinessProfilePage, // 🔥 IMPORTANT CHANGE
   '/setup': SetupPage,
   '/bookings': BookingsPage,
   '/settings': SettingsPage
-};
+}
+
+// Simple router
+const router = async () => {
+  const path = window.location.pathname
+  const page = routes[path] || LandingPage
+  await page()
+}
+
+window.addEventListener('popstate', router)
+document.addEventListener('DOMContentLoaded', router)
+
+// SPA link handling
+document.body.addEventListener('click', (e) => {
+  const link = e.target.closest('a[data-link]')
+  if (!link) return
+
+  e.preventDefault()
+  history.pushState({}, '', link.href)
+  router()
+})
 
 // --- AUTH LOGIC ---
 async function handleSignup(e) {
