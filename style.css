@@ -176,6 +176,180 @@ td {
     font-weight: 600;
 }
 
+/* PRICING V2 */
+.pricing-v2 {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 40px 20px;
+}
+
+.hero-simple {
+    text-align: center;
+    margin-bottom: 60px;
+}
+
+.hero-simple h1 {
+    font-size: 2.5rem;
+    margin-bottom: 12px;
+}
+
+.hero-simple p {
+    color: var(--text-muted);
+    font-size: 1.2rem;
+}
+
+.support-line {
+    display: block;
+    margin-top: 12px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.pricing-card.featured {
+    border: 2px solid var(--primary);
+    background: #fff;
+}
+
+.tagline {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+}
+
+.micro-text {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 12px;
+}
+
+.locked {
+    color: #94a3b8 !important;
+    font-size: 0.9rem;
+}
+
+.locked-feature {
+    text-align: center;
+    padding: 100px 20px;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.locked-feature h1 {
+    font-size: 2.5rem;
+    margin-bottom: 20px;
+}
+
+.locked-feature p {
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    margin-bottom: 32px;
+}
+
+/* TABLE */
+.comparison-section {
+    margin: 80px 0;
+    overflow-x: auto;
+}
+
+.comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.comparison-table th,
+.comparison-table td {
+    padding: 16px;
+    text-align: left;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.comparison-table th {
+    background: #f8fafc;
+    font-weight: 700;
+}
+
+/* TRUST */
+.trust-section {
+    text-align: center;
+    margin: 80px 0;
+}
+
+.trust-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-top: 32px;
+}
+
+.trust-item {
+    background: #fff;
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    font-weight: 600;
+}
+
+/* FAQ */
+.faq-section {
+    margin: 80px 0;
+}
+
+.faq-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    margin-top: 32px;
+}
+
+.faq-card h4 {
+    margin-bottom: 8px;
+    color: var(--text);
+}
+
+.faq-card p {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+/* FINAL CTA */
+.final-cta {
+    text-align: center;
+    padding: 60px;
+    background: #fff;
+    border-radius: 24px;
+    border: 1px solid #e2e8f0;
+}
+
+.cta-buttons {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin-top: 32px;
+}
+
+/* PRO STATUS */
+.pricing-pro-status {
+    height: 60vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.status-badge-pro {
+    background: #dcfce7;
+    color: #166534;
+    padding: 8px 20px;
+    border-radius: 20px;
+    display: inline-block;
+    font-weight: 700;
+    margin: 24px 0;
+}
+
 /* PRICING */
 .pricing-grid {
     display: grid;

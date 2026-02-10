@@ -4,118 +4,173 @@ import { LandingPage } from './pages/Landing.js'
 import { SignupPage } from './pages/Signup.js'
 import { LoginPage } from './pages/Login.js'
 import { DashboardHome } from './pages/Dashboard.js'
-import { BusinessProfilePage } from './pages/BusinessProfile.js'
+import { ProfilePage } from './pages/Profile.js'
 import { SetupPage } from './pages/Setup.js'
 import { BookingsPage } from './pages/Bookings.js'
 import { SettingsPage } from './pages/Settings.js'
+import { PricingPage } from './pages/Pricing.js'
+import { AdminDashboard } from './pages/AdminDashboard.js'
+import { AdminUsersPage } from './pages/AdminUsers.js'
 
 const app = document.querySelector('#app')
 
 const routes = {
-  '/': LandingPage,
-  '/signup': SignupPage,
-  '/login': LoginPage,
-  '/dashboard': DashboardHome,
-  '/profile': BusinessProfilePage, // 🔥 IMPORTANT CHANGE
-  '/setup': SetupPage,
-  '/bookings': BookingsPage,
-  '/settings': SettingsPage
-}
+  '/': () => LandingPage(),
+  '/signup': () => SignupPage(),
+  '/login': () => LoginPage(),
+  '/dashboard': (u, r, p) => DashboardHome(),
+  '/profile': (u, r, p) => ProfilePage(),
+  '/bookings': (u, r, p) => BookingsPage(),
+  '/settings': (u, r, p) => SettingsPage(),
+  '/pricing': (u, r, p) => PricingPage(p),
+  '/automations': (u, r, p) => p === 'pro' ? `<h1>Real Automations Page</h1>` : `<section class="locked-feature"><h1>🔒 Automations</h1><p>Automate your WhatsApp replies and booking confirmations.</p><button class="btn-primary" data-link href="/pricing">View Pro Plans</button></section>`,
+  '/analytics': (u, r, p) => p === 'pro' ? `<h1>Real Analytics Page</h1>` : `<section class="locked-feature"><h1>🔒 Analytics</h1><p>Track your business growth and customer engagement.</p><button class="btn-primary" data-link href="/pricing">View Pro Plans</button></section>`,
+  '/admin': (u, r, p) => AdminDashboard(),
+  '/admin/users': (u, r, p) => AdminUsersPage()
+};
 
-// Simple router
-const router = async () => {
-  const path = window.location.pathname
-  const page = routes[path] || LandingPage
-  await page()
-}
+// --- SECURITY & ROUTING ---
+async function router() {
+  const path = window.location.pathname;
+  const { data: { session } } = await supabase.auth.getSession();
 
-window.addEventListener('popstate', router)
-document.addEventListener('DOMContentLoaded', router)
-
-// SPA link handling
-document.body.addEventListener('click', (e) => {
-  const link = e.target.closest('a[data-link]')
-  if (!link) return
-
-  e.preventDefault()
-  history.pushState({}, '', link.href)
-  router()
-})
-async function authGuard(path) {
-  const { data: { session } } = await supabase.auth.getSession()
-
-  // Not logged in
-  if (!session && path !== '/login' && path !== '/signup') {
-    return '/login'
-  }
-  async function navigate(path) {
-    const safePath = await authGuard(path)
-    window.history.pushState({}, '', safePath)
-    renderRoute(safePath)
+  // 1. Auth Guard
+  if (!session) {
+    const publicRoutes = ['/', '/login', '/signup'];
+    if (!publicRoutes.includes(path)) return navigate('/login');
+    return render(path);
   }
 
-  // Logged in → check business profile
-  if (session) {
-    const { data: profile } = await supabase
-      .from('business_profiles')
-      .select('id')
-      .eq('user_id', session.user.id)
-      .single()
+  // 2. Role Guard
+  const { data: profile, error: roleError } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', session.user.id)
+    .single();
 
-    if (!profile && path !== '/setup') {
-      return '/setup'
+  const role = profile?.role || session.user.user_metadata?.role;
+
+  if (!role || roleError) {
+    await supabase.auth.signOut();
+    return navigate('/login');
+  }
+
+  // 3. Business Guard & Onboarding
+  let plan = 'free';
+  if (role === 'business') {
+    // Fetch Subscription
+    const { data: sub } = await supabase.from('subscriptions').select('plan, status').eq('user_id', session.user.id).single();
+    if (sub && sub.status === 'active') plan = sub.plan;
+
+    // Fetch Business Profile (The Gatekeeper)
+    const { data: bizProfile } = await supabase.from('business_profiles').select('id').eq('user_id', session.user.id).single();
+
+    // ONBOARDING LOGIC
+    if (!bizProfile) {
+      if (path !== '/profile') return navigate('/profile');
+    } else {
+      // Profile EXISTS
+      if (path === '/profile' || path === '/login' || path === '/signup') {
+        return navigate('/dashboard');
+      }
     }
 
-    if (profile && (path === '/login' || path === '/signup' || path === '/setup')) {
-      return '/dashboard'
+    // Feature Gating (Hard redirects)
+    const strictlyBlockedRoutes = ['/advanced-settings'];
+    if (plan === 'free' && strictlyBlockedRoutes.includes(path)) return navigate('/pricing');
+  }
+
+  // 4. Admin Redirection
+  const isAdminPath = path.startsWith('/admin');
+  const isBusinessPath = ['/dashboard', '/profile', '/bookings', '/settings', '/pricing', '/automations', '/analytics'].includes(path);
+
+  if (role === 'admin') {
+    if (isBusinessPath) return navigate('/admin');
+    if (!isAdminPath && path !== '/') return navigate('/admin');
+  }
+
+  if (role === 'business' && isAdminPath) return navigate('/dashboard');
+
+  render(path, session.user, role, plan);
+}
+
+function navigate(path) {
+  window.history.pushState({}, '', path);
+  router();
+}
+
+async function render(path, user = null, role = null, plan = 'free') {
+  const viewFunc = routes[path] || (() => LandingPage());
+  const { data: { session } } = await supabase.auth.getSession();
+
+  const nav = `
+    <nav>
+      <a href="/" data-link>Landing</a>
+      ${!session ? `
+        <a href="/login" data-link>Login</a>
+        <a href="/signup" data-link>Signup</a>
+      ` : role === 'admin' ? `
+        <a href="/admin" data-link>Admin Dash</a>
+        <a href="/admin/users" data-link>Users</a>
+        <a href="#" id="logout-link">Logout</a>
+      ` : `
+        <a href="/dashboard" data-link>Dashboard</a>
+        <a href="/bookings" data-link>Bookings</a>
+        <a href="/automations" data-link class="${plan === 'free' ? 'locked' : ''}">Automations ${plan === 'free' ? '🔒' : ''}</a>
+        <a href="/analytics" data-link class="${plan === 'free' ? 'locked' : ''}">Analytics ${plan === 'free' ? '🔒' : ''}</a>
+        <a href="/profile" data-link>Profile</a>
+        <a href="/pricing" data-link class="${plan === 'pro' ? 'pro-link' : ''}">
+          ${plan === 'pro' ? 'Pro Plan' : 'Upgrade 🚀'}
+        </a>
+        <a href="#" id="logout-link">Logout</a>
+      `}
+    </nav>
+  `;
+
+  app.innerHTML = nav + viewFunc(user, role, plan);
+
+  // Attach dynamic event listeners
+  document.querySelector('#logout-link')?.addEventListener('click', handleLogout);
+
+  if (path === '/signup') document.querySelector('#signup-form').onsubmit = handleSignup;
+  if (path === '/login') document.querySelector('#login-form').onsubmit = handleLogin;
+
+  if (session && role === 'business') {
+    if (path === '/profile') {
+      loadProfileData(user);
+      document.querySelector('#profile-form').onsubmit = handleProfileSave;
+    }
+    if (path === '/dashboard') {
+      loadDashboardData(user, plan);
+      document.querySelector('#view-all-bookings').onclick = () => navigate('/bookings');
+    }
+    if (path === '/bookings') loadBookings(user);
+    if (path === '/pricing') {
+      const view = PricingPage(plan);
+      app.innerHTML = nav + view;
+      document.querySelector('#upgrade-btn')?.addEventListener('click', () => handleUpgrade(user, 'pro'));
+      document.querySelector('#upgrade-btn-final')?.addEventListener('click', () => handleUpgrade(user, 'pro'));
     }
   }
 
-  return path
-}
-
-// --- AUTH LOGIC ---
-async function handleSignup(e) {
-  e.preventDefault();
-  const email = document.querySelector('#signup-email').value;
-  const password = document.querySelector('#signup-password').value;
-
-  const { data, error } = await supabase.auth.signUp({ email, password });
-
-  if (error) alert(error.message);
-  else {
-    alert("Check your email for confirmation!");
-    navigate('/login');
+  if (session && role === 'admin') {
+    if (path === '/admin') loadAdminStats();
+    if (path === '/admin/users') loadAllUsers();
   }
 }
 
-async function handleLogin(e) {
-  e.preventDefault();
-  const email = document.querySelector('#login-email').value;
-  const password = document.querySelector('#login-password').value;
-
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-
-  if (error) alert(error.message);
-  else navigate('/dashboard');
-}
-
-async function handleLogout() {
-  await supabase.auth.signOut();
-  navigate('/');
-}
-
-// --- DATA PERSISTENCE ---
+// --- PROFILE LOGIC ---
 async function handleProfileSave(e) {
   e.preventDefault();
   const { data: { user } } = await supabase.auth.getUser();
+
   const name = document.querySelector('#biz-name').value;
   const phone = document.querySelector('#biz-phone').value;
   const address = document.querySelector('#biz-address').value;
   const hours = document.querySelector('#biz-hours').value;
 
   const { error } = await supabase
-    .from('businesses')
+    .from('business_profiles')
     .upsert({
       user_id: user.id,
       business_name: name,
@@ -125,215 +180,191 @@ async function handleProfileSave(e) {
     }, { onConflict: 'user_id' });
 
   if (error) alert(error.message);
-  else alert('Profile updated!');
+  else navigate('/dashboard'); // Strict: Redirect to dashboard on success
 }
 
-async function handleSetupSave(e) {
-  e.preventDefault();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  // Get business ID first
-  const { data: biz } = await supabase
-    .from('businesses')
-    .select('id')
-    .eq('user_id', user.id)
-    .single();
-
-  if (!biz) {
-    alert("Please save your Business Profile first!");
-    return;
+async function loadProfileData(user) {
+  const { data } = await supabase.from('business_profiles').select('*').eq('user_id', user.id).single();
+  if (data) {
+    document.querySelector('#biz-name').value = data.business_name || '';
+    document.querySelector('#biz-phone').value = data.whatsapp_number || '';
+    document.querySelector('#biz-address').value = data.address || '';
+    document.querySelector('#biz-hours').value = data.working_hours || '';
   }
-
-  const welcome = document.querySelector('#welcome-msg').value;
-  const service = document.querySelector('#service-msg').value;
-  const confirm = document.querySelector('#confirm-msg').value;
-
-  const { error } = await supabase
-    .from('message_templates')
-    .upsert({
-      business_id: biz.id,
-      welcome_msg: welcome,
-      service_msg: service,
-      confirm_msg: confirm
-    }, { onConflict: 'business_id' });
-
-  if (error) alert(error.message);
-  else alert('Templates saved!');
 }
 
-async function loadDashboardData(user) {
-  const { data: biz } = await supabase.from('businesses').select('*').eq('user_id', user.id).single();
+// --- ADMIN LOGIC ---
+async function loadAdminStats() {
+  const { count: users } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
+  const { count: biz } = await supabase.from('business_profiles').select('*', { count: 'exact', head: true });
+
+  const totalUsersEl = document.querySelector('#total-users');
+  const activeBizEl = document.querySelector('#active-biz');
+
+  if (totalUsersEl) totalUsersEl.textContent = users || 0;
+  if (activeBizEl) activeBizEl.textContent = biz || 0;
+}
+
+async function loadDashboardData(user, plan = 'free') {
+  const { data: biz } = await supabase.from('business_profiles').select('*').eq('user_id', user.id).single();
 
   if (biz) {
     document.querySelector('#welcome-title').textContent = `Welcome back, ${biz.business_name}!`;
+    if (plan === 'free') {
+      const banner = document.createElement('div');
+      banner.className = 'upgrade-banner';
+      banner.innerHTML = `<p>🚀 Unlock automated confirmations and analytics! <a href="/pricing" data-link>Upgrade to Pro</a></p>`;
+      document.querySelector('.dashboard').prepend(banner);
+    }
+  } else return;
+}
+
+// --- PAYMENT LOGIC ---
+async function handleUpgrade(user, planType = 'pro') {
+  const btn = document.querySelector('#upgrade-btn') || document.querySelector('#upgrade-btn-final');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Processing... ⏳";
   }
 
-  if (!biz) {
-    document.querySelector('#booking-count').textContent = 'Profile incomplete';
-    return;
-  }
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
 
-  // Count today's bookings
-  const today = new Date().toISOString().split('T')[0];
-  const { count, error } = await supabase
-    .from('bookings')
-    .select('*', { count: 'exact', head: true })
-    .eq('business_id', biz.id)
-    .eq('booking_date', today);
+    // 1. Create Order (Server-Side)
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pay`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify({ action: 'create-order', payload: { plan: planType } })
+    });
 
-  if (!error) document.querySelector('#booking-count').textContent = count || 0;
+    const order = await res.json();
+    if (order.error) throw new Error(order.error);
 
-  // Load Latest 5
-  const { data: latest } = await supabase
-    .from('bookings')
-    .select('*')
-    .eq('business_id', biz.id)
-    .order('created_at', { ascending: false })
-    .limit(5);
+    // 2. Open Razorpay Checkout (Frontend)
+    const options = {
+      key: import.meta.env.VITE_RAZORPAY_KEY_ID, // Public Key Only
+      amount: order.amount,
+      currency: order.currency,
+      name: "AutoWhats SaaS",
+      description: `${planType.toUpperCase()} Subscription upgrade`,
+      order_id: order.id,
+      handler: async function (response) {
+        if (btn) btn.textContent = "Verifying Payment... 🔒";
 
-  const list = document.querySelector('#latest-bookings-list');
-  if (latest && latest.length > 0) {
-    list.innerHTML = latest.map(b => `
-      <tr>
-        <td>${b.cust_name}</td>
-        <td>${b.service}</td>
-        <td>${b.time}</td>
-      </tr>
-    `).join('');
-  } else {
-    list.innerHTML = '<tr><td>No bookings yet.</td></tr>';
+        // 3. Verify Payment (Server-Side)
+        const verifyRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pay`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            action: 'verify-payment',
+            payload: { ...response, plan: planType }
+          })
+        });
+
+        const result = await verifyRes.json();
+        if (result.status === 'success') {
+          alert("Success! Your subscription is now active.");
+          router(); // Instant re-render with new plan
+        } else {
+          alert("Payment verification failed. Please contact support.");
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = `Upgrade to ${planType} 🚀`;
+          }
+        }
+      },
+      modal: {
+        ondismiss: function () {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = `Upgrade to ${planType} 🚀`;
+          }
+        }
+      },
+      prefill: { email: user.email },
+      theme: { color: "#25d366" }
+    };
+
+    const rzp = new window.Razorpay(options);
+    rzp.open();
+
+  } catch (err) {
+    console.error('PAYMENT_ERROR:', err.message);
+    alert("Payment Error: " + err.message);
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = `Upgrade to ${planType} 🚀`;
+    }
   }
 }
 
-async function handlePasswordChange(e) {
-  e.preventDefault();
-  const newPassword = document.querySelector('#new-password').value;
-  const { error } = await supabase.auth.updateUser({ password: newPassword });
-  if (error) alert(error.message);
-  else alert('Password updated successfully!');
-}
-
-async function loadBookings(user) {
-  const { data: biz } = await supabase.from('businesses').select('id').eq('user_id', user.id).single();
-  if (!biz) {
-    document.querySelector('#bookings-list').innerHTML = '<tr><td colspan="4">Please set up your profile first.</td></tr>';
-    return;
-  }
-
+async function loadAllUsers() {
   const { data, error } = await supabase
-    .from('bookings')
-    .select('*')
-    .eq('business_id', biz.id)
+    .from('profiles')
+    .select('email, role, created_at')
     .order('created_at', { ascending: false });
 
-  const list = document.querySelector('#bookings-list');
+  const list = document.querySelector('#users-list');
   if (error || !data || data.length === 0) {
-    list.innerHTML = '<tr><td colspan="4">No bookings found yet.</td></tr>';
+    list.innerHTML = '<tr><td colspan="4">No users found.</td></tr>';
   } else {
-    list.innerHTML = data.map(b => `
+    list.innerHTML = data.map(u => `
       <tr>
-        <td>${b.cust_name || 'Anonymous'}</td>
-        <td>${b.service || 'N/A'}</td>
-        <td>${b.time || 'N/A'}</td>
-        <td><span class="status-badge">${b.status}</span></td>
+        <td>${u.email}</td>
+        <td>${u.role}</td>
+        <td>Active</td>
+        <td><button disabled>Manage</button></td>
       </tr>
     `).join('');
   }
 }
 
-// --- ROUTING ---
-async function navigate(path) {
-  const { data: { session } } = await supabase.auth.getSession();
-
-  // Protect dashboard routes
-  const isDashboardRoute = ['/dashboard', '/profile', '/setup', '/bookings', '/settings'].includes(path);
-  if (isDashboardRoute && !session) {
-    navigate('/login');
-    return;
-  }
-
-  window.history.pushState({}, path, window.location.origin + path);
-  const view = routes[path] || LandingPage;
-
-  const nav = `
-    <nav>
-      <a href="/" data-link>Landing</a>
-      ${!session ? `
-        <a href="/login" data-link>Login</a>
-        <a href="/signup" data-link>Signup</a>
-      ` : `
-        <a href="/dashboard" data-link>Dashboard</a>
-        <a href="/bookings" data-link>Bookings</a>
-        <a href="/profile" data-link>Profile</a>
-        <a href="/setup" data-link>Setup</a>
-        <a href="#" id="logout-link">Logout</a>
-      `}
-    </nav>
-  `;
-
-  app.innerHTML = nav + view();
-
-  // Attach listeners and load data for current view
-  if (path === '/signup') document.querySelector('#signup-form').onsubmit = handleSignup;
-  if (path === '/login') document.querySelector('#login-form').onsubmit = handleLogin;
-
-  if (session) {
-    document.querySelector('#logout-link')?.addEventListener('click', handleLogout);
-
-    if (path === '/dashboard') {
-      loadDashboardData(session.user);
-      document.querySelector('#view-all-bookings').onclick = () => navigate('/bookings');
+// --- AUTH HANDLERS ---
+async function handleSignup(e) {
+  e.preventDefault();
+  const email = document.querySelector('#signup-email').value;
+  const password = document.querySelector('#signup-password').value;
+  const { error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: { role: 'business' } // Default role
     }
-    if (path === '/bookings') loadBookings(session.user);
-    if (path === '/settings') document.querySelector('#change-password-form').onsubmit = handlePasswordChange;
-
-    if (path === '/profile') {
-      const form = document.querySelector('#profile-form');
-      form.onsubmit = handleProfileSave;
-      // Pre-fill
-      const { data } = await supabase.from('businesses').select('*').eq('user_id', session.user.id).single();
-      if (data) {
-        document.querySelector('#biz-name').value = data.business_name || '';
-        document.querySelector('#biz-phone').value = data.whatsapp_number || '';
-        document.querySelector('#biz-address').value = data.address || '';
-        document.querySelector('#biz-hours').value = data.working_hours || '';
-      }
-    }
-
-    if (path === '/setup') {
-      const form = document.querySelector('#setup-form');
-      form.onsubmit = handleSetupSave;
-      // Pre-fill
-      const { data: biz } = await supabase.from('businesses').select('id').eq('user_id', session.user.id).single();
-      if (biz) {
-        const { data } = await supabase.from('message_templates').select('*').eq('business_id', biz.id).single();
-        if (data) {
-          document.querySelector('#welcome-msg').value = data.welcome_msg || '';
-          document.querySelector('#service-msg').value = data.service_msg || '';
-          document.querySelector('#confirm-msg').value = data.confirm_msg || '';
-        }
-      }
-    }
-  }
+  });
+  if (error) alert(error.message);
+  else alert("Check your email!");
 }
 
-// Initial Load
-document.addEventListener('DOMContentLoaded', () => {
-  try {
-    navigate(window.location.pathname);
-  } catch (error) {
-    console.error("Navigation error:", error);
-    if (app) app.innerHTML = `<h1>Something went wrong</h1><p>Check if your Supabase keys are configured in supabase.js</p>`;
-  }
-});
+async function handleLogin(e) {
+  e.preventDefault();
+  const email = document.querySelector('#login-email').value;
+  const password = document.querySelector('#login-password').value;
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) alert(error.message);
+  else router();
+}
 
-// Handle back/forward
-window.onpopstate = () => navigate(window.location.pathname);
+async function handleLogout(e) {
+  if (e) e.preventDefault();
+  await supabase.auth.signOut();
+  router();
+}
 
-// Universal click listener for routing
+// Handle browser navigation
+window.onpopstate = router;
+document.addEventListener('DOMContentLoaded', router);
+
+// Handle clicks
 document.addEventListener('click', (e) => {
-  if (e.target.matches('[data-link]')) {
+  const link = e.target.closest('[data-link]');
+  if (link) {
     e.preventDefault();
-    navigate(e.target.getAttribute('href'));
+    navigate(link.getAttribute('href'));
   }
 });
