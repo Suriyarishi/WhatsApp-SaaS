@@ -9,4 +9,3 @@ export const LoginPage = () => `
     <p>Need an account? <a href="/signup" data-link>Sign up</a></p>
   </section>
 `
-sacs
